@@ -24,7 +24,6 @@ def init_game_state():
             'can_continue_turn': False,  # 是否因为匹配成功可以继续
             'waiting_for_action': False,  # 是否等待玩家操作
             'flip_timestamp': None,  # 翻牌时间戳
-            'cards_flipping': [],  # 正在翻转的卡牌
             'draw_deck': [],  # 抽取牌堆（用于补充空缺）
             'paired_cards': [],  # 已配对的牌（用于重新混洗）
         }
@@ -290,10 +289,10 @@ def handle_card_click(card_idx: int, game_state: Dict):
     if len(game_state['selected_cards']) >= 2:
         return
     
-    # 添加到选中列表并标记为翻转中
+    # 添加到选中列表并立即翻开
     game_state['selected_cards'].append(card_idx)
-    if card_idx not in game_state['cards_flipping']:
-        game_state['cards_flipping'].append(card_idx)
+    if card_idx not in game_state['flipped_cards']:
+        game_state['flipped_cards'].append(card_idx)
     
     # 如果选中了2张牌，记录翻牌时间并检查是否匹配
     if len(game_state['selected_cards']) == 2:
@@ -302,9 +301,8 @@ def handle_card_click(card_idx: int, game_state: Dict):
         card1 = game_state['deck'][idx1]
         card2 = game_state['deck'][idx2]
         
-        # 标记为等待状态（等待翻转动画完成）
+        # 标记为等待状态（等待2秒或玩家点击）
         game_state['waiting_for_action'] = True
-        # 保持翻转中状态，等待动画完成后处理
 
 def inject_css():
     """注入CSS样式，实现卡牌翻转动画和真实比例"""
@@ -371,15 +369,19 @@ def inject_css():
         cursor: not-allowed;
     }
     
-    /* Streamlit按钮样式覆盖 */
+    /* Streamlit按钮样式覆盖 - 确保所有按钮都是卡牌比例 */
     .stButton > button {
         width: 100%;
-        aspect-ratio: 2 / 3;
+        aspect-ratio: 2 / 3 !important;
         min-height: 120px;
         max-height: 200px;
         font-size: 20px;
         border-radius: 8px;
         border: 2px solid #333;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     
     /* 卡牌背面按钮 */
@@ -481,23 +483,12 @@ def main():
                 else:
                     is_match = False
                 
-                if elapsed >= 0.5:
-                    # 翻转动画已完成，将卡牌标记为已翻开
-                    if len(game_state['selected_cards']) == 2:
-                        idx1, idx2 = game_state['selected_cards']
-                        if idx1 not in game_state['flipped_cards']:
-                            game_state['flipped_cards'].append(idx1)
-                        if idx2 not in game_state['flipped_cards']:
-                            game_state['flipped_cards'].append(idx2)
-                        
-                        # 移除翻转中的标记
-                        if idx1 in game_state['cards_flipping']:
-                            game_state['cards_flipping'].remove(idx1)
-                        if idx2 in game_state['cards_flipping']:
-                            game_state['cards_flipping'].remove(idx2)
-                        
-                        # 如果是匹配成功，立即继续
-                        if is_match:
+                # 卡牌已经翻开，直接处理匹配结果
+                if len(game_state['selected_cards']) == 2:
+                    idx1, idx2 = game_state['selected_cards']
+                    
+                    # 如果是匹配成功，立即继续
+                    if is_match:
                             # 应用两张牌的效果
                             effect1 = apply_card_effect(card1['suit'], card1['value'], game_state)
                             effect2 = apply_card_effect(card2['suit'], card2['value'], game_state)
@@ -528,21 +519,17 @@ def main():
                             st.rerun()
                 
                 # 匹配失败，等待2秒
-                if elapsed >= 2.5:
+                if elapsed >= 2.0:
                     # 自动继续
                     handle_continue_click(game_state)
                     st.rerun()
-                elif elapsed >= 0.5:
-                    # 翻转动画已完成，等待2秒
-                    remaining = 2.5 - elapsed
+                else:
+                    # 等待2秒
+                    remaining = 2.0 - elapsed
                     st.warning(f"等待中... ({remaining:.1f}秒后自动继续)")
                     if st.button("继续", key="continue_btn"):
                         handle_continue_click(game_state)
                         st.rerun()
-                else:
-                    # 翻转动画进行中
-                    remaining = 0.5 - elapsed
-                    st.info(f"卡牌翻转中... ({remaining:.1f}秒)")
         if 'last_effect' in st.session_state:
             st.success(st.session_state['last_effect'])
     
@@ -584,30 +571,13 @@ def main():
                 card = game_state['deck'][card_idx]
                 
                 # 检查卡牌状态
-                is_removed = card_idx in game_state['removed_cards']
                 is_flipped = card_idx in game_state['flipped_cards']
                 is_selected = card_idx in game_state['selected_cards']
                 is_revealed = card_idx in game_state['revealed_cards']
                 is_blocked = game_state['current_enemy'] == 2 and (card_idx % 5) in game_state['blocked_columns']
-                is_flipping = card_idx in game_state['cards_flipping']
                 
                 # 注意：现在不再有removed_cards，配对后会被新牌替换
-                # 所以这个条件应该不会触发，但保留作为保险
-                if False:  # 不再使用移除状态
-                    st.button("", disabled=True, key=f"card_{card_idx}")
-                elif is_flipping:
-                    # 正在翻转的卡牌 - 使用CSS动画显示翻转效果
-                    button_label = "🚫" if is_blocked else "🂠"
-                    suit_color = "red" if card['suit'] in ['♥', '♦'] else "black"
-                    st.markdown(f"""
-                    <div style="aspect-ratio: 2/3; max-width: 150px; margin: 0 auto; perspective: 1000px;">
-                        <div class="card-flip flipped" style="position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.5s; transform: rotateY(180deg);">
-                            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 2px solid #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 24px;">{button_label}</div>
-                            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 2px solid #333; background: white; color: {suit_color}; font-size: 24px; transform: rotateY(180deg);">{card['suit']}<br>{card['value']}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                elif is_flipped or is_selected:
+                if is_flipped or is_selected:
                     # 显示卡牌正面
                     color = get_card_color(card['suit'])
                     display_text = f"{card['suit']}\n{card['value']}"
@@ -632,7 +602,7 @@ def main():
                         help=f"这张牌是 {card['value']} 点（已被方片效果揭示）"
                     )
                 else:
-                    # 显示卡牌背面
+                    # 显示卡牌背面 - 确保有正确的比例
                     button_label = "🚫" if is_blocked else "🂠"
                     st.button(
                         button_label,
