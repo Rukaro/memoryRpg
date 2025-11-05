@@ -381,8 +381,7 @@ def handle_card_click(card_idx: int, game_state: Dict):
             game_state['can_continue_turn'] = True
             game_state['waiting_for_action'] = False
             
-            # 立即刷新页面以显示新卡牌
-            st.rerun()
+            # 注意：不需要调用 st.rerun()，Streamlit 会在回调执行后自动重新运行脚本
         else:
             # 匹配失败，保持翻开状态，等待玩家点击下一组牌时翻回去
             game_state['waiting_for_action'] = True
