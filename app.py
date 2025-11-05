@@ -360,12 +360,13 @@ def handle_card_click(card_idx: int, game_state: Dict):
     # if card_idx in game_state['removed_cards']:
     #     return
     
-    # 如果已经选中，则取消选中（翻回去）
-    if card_idx in game_state['selected_cards']:
-        game_state['selected_cards'].remove(card_idx)
-        if card_idx in game_state['flipped_cards']:
-            game_state['flipped_cards'].remove(card_idx)
-        return
+    # 如果已经选中，不允许取消选中（翻开的牌不能主动翻回去）
+    # 注释掉原来的逻辑，翻开的牌不能翻回去
+    # if card_idx in game_state['selected_cards']:
+    #     game_state['selected_cards'].remove(card_idx)
+    #     if card_idx in game_state['flipped_cards']:
+    #         game_state['flipped_cards'].remove(card_idx)
+    #     return
     
     # 如果已经翻开了（但未选中），可能是上一组匹配失败的牌，或者是敌人回合后保留的第一张牌
     # 如果当前没有选中的牌，可以将这张已翻开的牌作为新一组的第一张
@@ -807,12 +808,23 @@ def main():
                     # 显示卡牌正面
                     color = get_card_color(card['suit'])
                     display_text = f"{card['suit']}\n{card['value']}"
-                    button_style = "🔴 " if is_selected else ""
+                    button_style = " " if is_selected else ""
                     button_class = "card-front-btn" + (" card-selected" if is_selected else "")
-                    # 如果已经选中，可以取消选中；如果已翻开但未选中，在等待状态下可以点击
+                    # 翻开的牌不能主动翻回去
                     # 如果只有一张选中的牌，可以点击已翻开的牌作为第二张
                     # 匹配成功的牌可以点击（作为新一组的第一张或触发替换）
-                    disabled = False if (game_state['waiting_for_action'] or len(game_state['selected_cards']) == 1 or is_matched) else (is_flipped and not is_selected)
+                    # 在等待状态下（匹配失败），可以点击已翻开的牌来继续
+                    # 如果已经选中，不允许取消选中（翻开的牌不能翻回去）
+                    if is_selected:
+                        disabled = True  # 已选中的牌不能取消选中
+                    elif is_matched:
+                        disabled = False  # 匹配成功的牌可以点击
+                    elif game_state['waiting_for_action']:
+                        disabled = False  # 等待状态下可以点击
+                    elif len(game_state['selected_cards']) == 1:
+                        disabled = False  # 只有一张选中时，可以点击已翻开的牌作为第二张
+                    else:
+                        disabled = True  # 其他情况下，已翻开的牌不能点击（不能翻回去）
                     st.button(
                         f"{button_style}{display_text}",
                         key=f"card_{card_idx}",
