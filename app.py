@@ -563,40 +563,63 @@ def inject_css():
         cursor: not-allowed;
     }
     
+    /* 限制列的宽度，确保卡牌尺寸一致 */
+    div[data-testid="column"],
+    div[data-testid="column"] > div,
+    div[data-testid="column"] > div > div {
+        min-width: 80px !important;
+        max-width: 80px !important;
+        flex: 0 0 80px !important;
+        width: 80px !important;
+        flex-shrink: 0 !important;
+        flex-grow: 0 !important;
+    }
+    
     /* Streamlit按钮样式覆盖 - 确保所有按钮都是固定的卡牌尺寸 2:3 (宽度是高度的2/3) */
+    /* 强制固定容器尺寸 */
+    div[data-testid="column"] .stButton,
     .stButton {
         width: 80px !important;
         height: 120px !important;
         flex-shrink: 0 !important;
         flex-grow: 0 !important;
+        flex: 0 0 80px !important;
         margin: 0 auto !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
     
-    .stButton > button {
+    /* 强制固定按钮尺寸 */
+    div[data-testid="column"] .stButton > button,
+    .stButton > button,
+    button[data-baseweb="button"] {
         width: 80px !important;
         height: 120px !important;
-        aspect-ratio: 2 / 3 !important;
-        min-height: 120px !important;
-        max-height: 120px !important;
         min-width: 80px !important;
         max-width: 80px !important;
-        font-size: 18px;
-        font-weight: bold;
-        border-radius: 8px;
-        border: 2px solid #ddd;
-        padding: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        transition: all 0.2s ease;
-        white-space: normal;
-        word-wrap: break-word;
+        min-height: 120px !important;
+        max-height: 120px !important;
+        aspect-ratio: 2 / 3 !important;
+        font-size: 18px !important;
+        font-weight: bold !important;
+        border-radius: 8px !important;
+        border: 2px solid #ddd !important;
+        padding: 8px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+        transition: all 0.2s ease !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
         /* 确保固定尺寸 */
         flex-shrink: 0 !important;
         flex-grow: 0 !important;
+        flex: 0 0 80px !important;
         box-sizing: border-box !important;
         margin: 0 !important;
+        overflow: hidden !important;
     }
     
     /* 卡牌正面样式 - 白色背景（primary类型，包含文本内容） */
@@ -642,18 +665,34 @@ def inject_css():
     
     /* 移动端按钮样式 - 保持固定尺寸 */
     @media (max-width: 768px) {
+        div[data-testid="column"],
+        div[data-testid="column"] > div,
+        div[data-testid="column"] > div > div {
+            min-width: 50px !important;
+            max-width: 50px !important;
+            flex: 0 0 50px !important;
+            width: 50px !important;
+            flex-shrink: 0 !important;
+            flex-grow: 0 !important;
+        }
+        
+        div[data-testid="column"] .stButton,
         .stButton {
             width: 50px !important;
             height: 75px !important;
+            flex: 0 0 50px !important;
         }
         
-        .stButton > button {
+        div[data-testid="column"] .stButton > button,
+        .stButton > button,
+        button[data-baseweb="button"] {
             width: 50px !important;
             height: 75px !important;
             min-height: 75px !important;
             max-height: 75px !important;
             min-width: 50px !important;
             max-width: 50px !important;
+            flex: 0 0 50px !important;
             font-size: 14px !important;
             border-radius: 6px !important;
             border: 1px solid #ddd !important;
@@ -868,7 +907,7 @@ def main():
         blocked_cols = [col+1 for col in game_state['blocked_columns']]
         st.warning(f"⚠️ 第 {', '.join(map(str, blocked_cols))} 列被禁止操作")
     
-    # 创建4x5的网格 - 移动端自动适配
+    # 创建4x5的网格 - 使用固定宽度列确保卡牌尺寸一致
     for row in range(4):
         cols = st.columns(5, gap="small")
         for col in range(5):
