@@ -570,12 +570,48 @@ def inject_css():
         min-height: 80px;
         max-width: 84px;
         font-size: 20px;
-        border-radius: 8px;
-        border: 2px solid #333;
+        border-radius: 10px;
+        border: 2px solid #1a1a1a;
         padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.1);
+        background: white;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    /* 扑克牌样式 - 白色背景 */
+    .stButton > button.card-front-btn {
+        background: #ffffff !important;
+        color: #1a1a1a;
+        font-weight: bold;
+    }
+    
+    /* 扑克牌背面样式 - 经典蓝色图案 */
+    .stButton > button.card-back-btn {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%) !important;
+        background-size: 20px 20px;
+        background-image: 
+            repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px),
+            repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px);
+        color: white;
+        border: 2px solid #0f1f3d;
+    }
+    
+    /* 卡牌悬停效果 */
+    .stButton > button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.15);
+        transition: all 0.2s ease;
+    }
+    
+    /* 卡牌选中高亮 */
+    .stButton > button.card-selected {
+        box-shadow: 0 0 20px rgba(255, 50, 50, 0.8), 0 4px 12px rgba(255, 50, 50, 0.4) !important;
+        border-color: #ff3232 !important;
+        transform: scale(1.05);
     }
     
     /* 移动端按钮样式 */
@@ -589,10 +625,32 @@ def inject_css():
         }
     }
     
-    /* 卡牌背面按钮 */
-    .card-back-btn {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+    /* 扑克牌点数显示样式 - 左上角和右下角 */
+    .stButton > button.card-front-btn::before {
+        content: attr(data-suit);
+        position: absolute;
+        top: 4px;
+        left: 6px;
+        font-size: 14px;
+        font-weight: bold;
+        line-height: 1;
+    }
+    
+    .stButton > button.card-front-btn::after {
+        content: attr(data-suit);
+        position: absolute;
+        bottom: 4px;
+        right: 6px;
+        font-size: 14px;
+        font-weight: bold;
+        line-height: 1;
+        transform: rotate(180deg);
+    }
+    
+    /* 扑克牌中间花色显示 */
+    .card-suit-large {
+        font-size: 32px !important;
+        line-height: 1;
     }
     
     /* 移动端整体布局优化 */
@@ -734,20 +792,35 @@ def main():
         enemy_turn(game_state)
         if not game_state['game_over']:
             st.rerun()
-        else:
-            return  # 游戏结束，不继续渲染
+        # 如果游戏结束，继续执行下面的游戏结束检查，显示UI
     
     # 游戏结束检查
     if game_state['game_over']:
+        # 显示游戏结束信息
+        st.divider()
         if game_state['game_won']:
             st.balloons()
             st.success("🎉 恭喜！你击败了所有敌人！")
         else:
             st.error("💀 游戏结束！你被击败了")
-        if st.button("重新开始"):
+            st.warning("你的生命值已归零，游戏失败")
+        
+        # 显示最终统计
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("最终生命值", f"{max(0, game_state['player_hp'])}/100")
+        with col2:
+            st.metric("击败敌人", f"{game_state['current_enemy']}/3")
+        
+        # 重新开始按钮
+        st.divider()
+        if st.button("🔄 重新开始游戏", use_container_width=True, type="primary"):
+            # 清空所有session state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
+        
+        # 游戏结束时，不显示卡牌区域
         return
     
     st.divider()
@@ -823,11 +896,8 @@ def main():
                 # 注意：现在不再有removed_cards，配对后会被新牌替换
                 # 匹配成功的牌即使不在selected_cards中，也应该显示为翻开状态
                 if is_flipped or is_selected or is_matched:
-                    # 显示卡牌正面
-                    color = get_card_color(card['suit'])
-                    display_text = f"{card['suit']}\n{card['value']}"
-                    button_style = " " if is_selected else ""
-                    button_class = "card-front-btn" + (" card-selected" if is_selected else "")
+                    # 显示卡牌正面 - 扑克牌样式
+                    # 扑克牌格式：中间显示大花色，左上角和右下角显示点数和花色
                     # 翻开的牌不能主动翻回去
                     # 如果只有一张选中的牌，可以点击已翻开的牌作为第二张
                     # 匹配成功的牌可以点击（作为新一组的第一张或触发替换）
@@ -843,13 +913,29 @@ def main():
                         disabled = False  # 只有一张选中时，可以点击已翻开的牌作为第二张
                     else:
                         disabled = True  # 其他情况下，已翻开的牌不能点击（不能翻回去）
+                    # 使用HTML显示扑克牌样式，然后用透明按钮覆盖用于点击
+                    # 创建一个容器来显示卡牌内容
+                    st.markdown(f"""
+                    <div style="position: relative; width: 100%; aspect-ratio: 2/3; background: white; border-radius: 10px; border: 2px solid {'#ff3232' if is_selected else '#1a1a1a'}; box-shadow: {'0 0 20px rgba(255, 50, 50, 0.8)' if is_selected else '0 4px 8px rgba(0, 0, 0, 0.2)'}; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Arial', sans-serif; margin-bottom: 0.5rem;">
+                        <div style="position: absolute; top: 4px; left: 6px; font-size: 12px; font-weight: bold; color: {'red' if (card['suit'] == '♥' or card['suit'] == '♦') else 'black'}; line-height: 1.2; text-align: left;">
+                            {card['value']}<br>{card['suit']}
+                        </div>
+                        <div style="font-size: 32px; font-weight: bold; color: {'red' if (card['suit'] == '♥' or card['suit'] == '♦') else 'black'}; line-height: 1;">
+                            {card['suit']}
+                        </div>
+                        <div style="position: absolute; bottom: 4px; right: 6px; font-size: 12px; font-weight: bold; color: {'red' if (card['suit'] == '♥' or card['suit'] == '♦') else 'black'}; line-height: 1.2; text-align: right; transform: rotate(180deg);">
+                            {card['value']}<br>{card['suit']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                     st.button(
-                        f"{button_style}{display_text}",
+                        " ",
                         key=f"card_{card_idx}",
                         disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
-                        use_container_width=True
+                        use_container_width=True,
+                        help=f"{card['suit']} {card['value']}"
                     )
                 elif is_revealed:
                     # 被揭示的牌，显示提示（但未选中或翻开）
@@ -865,17 +951,32 @@ def main():
                         help=f"这张牌是 {card['value']} 点（已被方片效果揭示）"
                     )
                 else:
-                    # 显示卡牌背面 - 确保有正确的比例
-                    # 在等待状态下（匹配失败），背面卡牌也可以点击来继续
-                    button_label = "🚫" if is_blocked else "🂠"
+                    # 显示卡牌背面 - 扑克牌背面样式
+                    if is_blocked:
+                        # 被禁止的卡牌显示特殊样式
+                        st.markdown(f"""
+                        <div style="position: relative; width: 100%; aspect-ratio: 2/3; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%); background-size: 20px 20px; background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px), repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px); border-radius: 10px; border: 2px solid #0f1f3d; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); display: flex; align-items: center; justify-content: center; opacity: 0.5; margin-bottom: 0.5rem;">
+                            <div style="font-size: 24px; color: white;">🚫</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        # 普通卡牌背面 - 经典扑克牌背面图案
+                        st.markdown(f"""
+                        <div style="position: relative; width: 100%; aspect-ratio: 2/3; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%); background-size: 20px 20px; background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px), repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px); border-radius: 10px; border: 2px solid #0f1f3d; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem;">
+                            <div style="width: 60%; height: 60%; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                <div style="font-size: 32px; color: rgba(255,255,255,0.3);">🂠</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                     disabled = is_blocked and not game_state['waiting_for_action']
                     st.button(
-                        button_label,
+                        " ",
                         key=f"card_{card_idx}",
                         disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
-                        use_container_width=True
+                        use_container_width=True,
+                        help="点击翻牌" if not is_blocked else "此列被禁止"
                     )
     
     # 游戏说明
