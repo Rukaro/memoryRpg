@@ -25,6 +25,8 @@ def init_game_state():
             'waiting_for_action': False,  # 是否等待玩家操作
             'flip_timestamp': None,  # 翻牌时间戳
             'cards_flipping': [],  # 正在翻转的卡牌
+            'draw_deck': [],  # 抽取牌堆（用于补充空缺）
+            'paired_cards': [],  # 已配对的牌（用于重新混洗）
         }
 
 def create_deck() -> List[Dict]:
@@ -46,6 +48,50 @@ def create_deck() -> List[Dict]:
     
     random.shuffle(deck)
     return deck
+
+def draw_new_card(game_state: Dict) -> Optional[Dict]:
+    """从抽取牌堆抽取一张新牌，如果牌堆为空则重新混洗已配对的牌"""
+    # 如果抽取牌堆为空，重新混洗已配对的牌
+    if not game_state['draw_deck']:
+        if game_state['paired_cards']:
+            # 重新混洗已配对的牌
+            game_state['draw_deck'] = game_state['paired_cards'].copy()
+            random.shuffle(game_state['draw_deck'])
+            game_state['paired_cards'] = []
+        else:
+            # 如果也没有已配对的牌，返回None（不应该发生）
+            return None
+    
+    # 从抽取牌堆抽取一张牌
+    if game_state['draw_deck']:
+        return game_state['draw_deck'].pop(0)
+    return None
+
+def replace_paired_cards(game_state: Dict, card_idx1: int, card_idx2: int):
+    """替换配对成功的牌，从牌堆抽取新牌补上空缺"""
+    # 获取配对的牌
+    card1 = game_state['deck'][card_idx1]
+    card2 = game_state['deck'][card_idx2]
+    
+    # 将配对的牌移到已配对存储
+    game_state['paired_cards'].append(card1)
+    game_state['paired_cards'].append(card2)
+    
+    # 从抽取牌堆抽取新牌补上空缺
+    new_card1 = draw_new_card(game_state)
+    new_card2 = draw_new_card(game_state)
+    
+    if new_card1:
+        game_state['deck'][card_idx1] = new_card1
+    else:
+        # 如果没有新牌，保持原牌（这种情况不应该发生，但作为保险）
+        pass
+    
+    if new_card2:
+        game_state['deck'][card_idx2] = new_card2
+    else:
+        # 如果没有新牌，保持原牌
+        pass
 
 def get_card_color(suit: str) -> str:
     """根据花色返回颜色"""
@@ -133,6 +179,10 @@ def enemy_turn(game_state: Dict):
         else:
             # 重置卡牌状态，准备下一场战斗
             game_state['deck'] = create_deck()
+            # 重新初始化抽取牌堆
+            extra_deck = create_deck()
+            game_state['draw_deck'] = extra_deck
+            game_state['paired_cards'] = []
             game_state['flipped_cards'] = []
             game_state['removed_cards'] = []
             game_state['selected_cards'] = []
@@ -371,6 +421,11 @@ def main():
     # 初始化牌组
     if not game_state['deck']:
         game_state['deck'] = create_deck()
+        # 初始化抽取牌堆（额外创建一些牌作为备用）
+        # 创建额外的牌用于补充（例如再创建10对牌）
+        extra_deck = create_deck()  # 再创建20张牌作为备用
+        game_state['draw_deck'] = extra_deck
+        game_state['paired_cards'] = []
     
     # 初始化敌人生命值
     for i in range(3):
@@ -443,29 +498,32 @@ def main():
                         
                         # 如果是匹配成功，立即继续
                         if is_match:
-                            if idx1 not in game_state['removed_cards']:
-                                game_state['removed_cards'].append(idx1)
-                            if idx2 not in game_state['removed_cards']:
-                                game_state['removed_cards'].append(idx2)
-                            
                             # 应用两张牌的效果
                             effect1 = apply_card_effect(card1['suit'], card1['value'], game_state)
                             effect2 = apply_card_effect(card2['suit'], card2['value'], game_state)
                             
                             st.session_state['last_effect'] = f"{effect1} {effect2}"
                             
-                            # 清空选中，可以继续翻牌
+                            # 替换配对的牌，从牌堆抽取新牌补上空缺
+                            replace_paired_cards(game_state, idx1, idx2)
+                            
+                            # 移除卡牌状态（不再是移除，而是被新牌替换）
+                            # 清空选中，重置翻转状态，让新牌可以正常操作
                             game_state['selected_cards'] = []
+                            # 移除翻转状态，让新牌显示为背面
+                            if idx1 in game_state['flipped_cards']:
+                                game_state['flipped_cards'].remove(idx1)
+                            if idx2 in game_state['flipped_cards']:
+                                game_state['flipped_cards'].remove(idx2)
+                            # 移除揭示状态
+                            if idx1 in game_state['revealed_cards']:
+                                game_state['revealed_cards'].remove(idx1)
+                            if idx2 in game_state['revealed_cards']:
+                                game_state['revealed_cards'].remove(idx2)
+                            
+                            # 清空选中，可以继续翻牌
                             game_state['can_continue_turn'] = True
                             game_state['waiting_for_action'] = False
-                            
-                            # 检查是否所有牌都已移除
-                            if len(game_state['removed_cards']) == 20:
-                                # 重新洗牌
-                                game_state['deck'] = create_deck()
-                                game_state['flipped_cards'] = []
-                                game_state['removed_cards'] = []
-                                game_state['revealed_cards'] = []
                             
                             st.rerun()
                 
@@ -533,7 +591,9 @@ def main():
                 is_blocked = game_state['current_enemy'] == 2 and (card_idx % 5) in game_state['blocked_columns']
                 is_flipping = card_idx in game_state['cards_flipping']
                 
-                if is_removed:
+                # 注意：现在不再有removed_cards，配对后会被新牌替换
+                # 所以这个条件应该不会触发，但保留作为保险
+                if False:  # 不再使用移除状态
                     st.button("", disabled=True, key=f"card_{card_idx}")
                 elif is_flipping:
                     # 正在翻转的卡牌 - 使用CSS动画显示翻转效果
