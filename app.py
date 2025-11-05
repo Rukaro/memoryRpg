@@ -388,9 +388,57 @@ def handle_card_click(card_idx: int, game_state: Dict):
             # 不清空selected_cards，保持这两张牌的状态
 
 def inject_css():
-    """注入CSS样式，实现卡牌翻转动画和真实比例"""
+    """注入CSS样式，实现卡牌翻转动画和真实比例，包含移动端适配"""
     st.markdown("""
     <style>
+    /* 移动端适配 - 整体页面 */
+    @media (max-width: 768px) {
+        /* 主容器 */
+        .main .block-container {
+            padding: 1rem 0.5rem;
+            max-width: 100%;
+        }
+        
+        /* 标题 */
+        h1 {
+            font-size: 1.5rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+        
+        /* 副标题 */
+        h2, h3 {
+            font-size: 1rem !important;
+            margin-bottom: 0.3rem !important;
+        }
+        
+        /* Metric 组件 */
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+        
+        [data-testid="stMetricLabel"] {
+            font-size: 0.8rem !important;
+        }
+        
+        /* 列间距 */
+        [data-testid="column"] {
+            padding: 0.25rem !important;
+        }
+        
+        /* 卡牌网格 */
+        .stButton {
+            margin: 0.1rem !important;
+        }
+        
+        /* 按钮字体 */
+        .stButton > button {
+            font-size: 14px !important;
+            min-height: 60px !important;
+            max-height: 100px !important;
+            padding: 0.2rem !important;
+        }
+    }
+    
     /* 卡牌容器 - 真实比例 3:2 */
     .card-container {
         aspect-ratio: 3 / 2;
@@ -398,6 +446,13 @@ def inject_css():
         max-width: 150px;
         margin: 0 auto;
         perspective: 1000px;
+    }
+    
+    /* 移动端卡牌容器 */
+    @media (max-width: 768px) {
+        .card-container {
+            max-width: 100%;
+        }
     }
     
     /* 卡牌翻转容器 */
@@ -467,10 +522,47 @@ def inject_css():
         justify-content: center;
     }
     
+    /* 移动端按钮样式 */
+    @media (max-width: 768px) {
+        .stButton > button {
+            min-height: 50px !important;
+            max-height: 80px !important;
+            font-size: 14px !important;
+            border-radius: 6px !important;
+            border: 1px solid #333 !important;
+        }
+    }
+    
     /* 卡牌背面按钮 */
     .card-back-btn {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
+    }
+    
+    /* 移动端整体布局优化 */
+    @media (max-width: 768px) {
+        /* 限制最大宽度，居中显示 */
+        .main .block-container {
+            max-width: 100% !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }
+        
+        /* 减少垂直间距 */
+        .element-container {
+            margin-bottom: 0.5rem !important;
+        }
+        
+        /* 警告和提示信息 */
+        [data-testid="stAlert"] {
+            font-size: 0.85rem !important;
+            padding: 0.5rem !important;
+        }
+        
+        /* 分隔线 */
+        hr {
+            margin: 0.5rem 0 !important;
+        }
     }
     
     /* 卡牌正面按钮 */
@@ -496,7 +588,12 @@ def inject_css():
     """, unsafe_allow_html=True)
 
 def main():
-    st.set_page_config(page_title="记忆RPG", layout="wide")
+    # 移动端适配：使用 "wide" 布局但在CSS中限制最大宽度
+    st.set_page_config(
+        page_title="记忆RPG", 
+        layout="wide",
+        initial_sidebar_state="collapsed"  # 移动端默认收起侧边栏
+    )
     inject_css()
     st.title("🎮 记忆RPG游戏")
     
@@ -519,8 +616,9 @@ def main():
             enemy_info = get_enemy_info(i)
             st.session_state[enemy_key] = enemy_info['hp']
     
-    # 显示游戏状态
-    col1, col2, col3 = st.columns(3)
+    # 显示游戏状态 - 移动端使用响应式布局
+    # 使用 st.columns 的 gap 参数和响应式布局
+    col1, col2, col3 = st.columns([1, 1, 1], gap="small")
     
     with col1:
         st.subheader("玩家状态")
@@ -590,9 +688,9 @@ def main():
         blocked_cols = [col+1 for col in game_state['blocked_columns']]
         st.warning(f"⚠️ 第 {', '.join(map(str, blocked_cols))} 列被禁止操作")
     
-    # 创建4x5的网格
+    # 创建4x5的网格 - 移动端自动适配
     for row in range(4):
-        cols = st.columns(5)
+        cols = st.columns(5, gap="small")
         for col in range(5):
             card_idx = row * 5 + col
             with cols[col]:
