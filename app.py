@@ -297,6 +297,10 @@ def handle_card_click(card_idx: int, game_state: Dict):
             
             # 清空匹配成功的牌对标记
             game_state['matched_pairs'] = []
+            # 清除匹配成功的消息
+            game_state['can_continue_turn'] = False
+            if 'last_effect' in st.session_state:
+                del st.session_state['last_effect']
             
             # 继续处理当前点击的卡牌（作为新一组的第一张）
             # 不返回，继续执行下面的逻辑
@@ -317,6 +321,10 @@ def handle_card_click(card_idx: int, game_state: Dict):
             
             # 清空匹配成功的牌对标记
             game_state['matched_pairs'] = []
+            # 清除匹配成功的消息
+            game_state['can_continue_turn'] = False
+            if 'last_effect' in st.session_state:
+                del st.session_state['last_effect']
             
             # 继续处理新点击的卡牌
             # 不返回，继续执行下面的逻辑
@@ -333,6 +341,10 @@ def handle_card_click(card_idx: int, game_state: Dict):
             game_state['selected_cards'] = []
             game_state['enemy_turn'] = True
             game_state['waiting_for_action'] = False
+            # 清除匹配成功的消息（如果有）
+            game_state['can_continue_turn'] = False
+            if 'last_effect' in st.session_state:
+                del st.session_state['last_effect']
             # 执行敌人回合（但不在当前函数中执行，让主循环处理）
             # 清空后，将新点击的卡牌作为新一组的第一张
             # 先加入选中列表，然后让敌人回合处理，敌人回合后会保留它
@@ -394,6 +406,12 @@ def handle_card_click(card_idx: int, game_state: Dict):
     game_state['selected_cards'].append(card_idx)
     if card_idx not in game_state['flipped_cards']:
         game_state['flipped_cards'].append(card_idx)
+    
+    # 如果开始新的翻牌操作，清除之前的匹配成功消息
+    if len(game_state['selected_cards']) == 1:
+        game_state['can_continue_turn'] = False
+        if 'last_effect' in st.session_state:
+            del st.session_state['last_effect']
     
     # 如果选中了2张牌，立即检查是否匹配并执行效果
     # 注意：这里需要检查selected_cards的长度，因为可能已经有第一张牌（比如敌人回合后保留的）
