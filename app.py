@@ -24,6 +24,7 @@ def init_game_state():
             'can_continue_turn': False,  # 是否因为匹配成功可以继续
             'waiting_for_action': False,  # 是否等待玩家操作（匹配失败时）
             'pending_new_card': False,  # 是否有待处理的新卡牌（敌人回合后处理）
+            'matched_pairs': [],  # 匹配成功但还未替换的牌对 [idx1, idx2]
             'draw_deck': [],  # 抽取牌堆（用于补充空缺）
             'paired_cards': [],  # 已配对的牌（用于重新混洗）
         }
@@ -274,6 +275,52 @@ def handle_card_click(card_idx: int, game_state: Dict):
     if game_state['game_over']:
         return
     
+    # 如果有匹配成功的牌对还未替换，点击新卡牌时替换它们
+    if game_state.get('matched_pairs') and len(game_state['matched_pairs']) == 2:
+        matched_idx1, matched_idx2 = game_state['matched_pairs']
+        # 如果点击的是匹配成功的牌之一，允许将其作为新一组的第一张
+        if card_idx == matched_idx1 or card_idx == matched_idx2:
+            # 先替换掉另一张匹配成功的牌
+            other_idx = matched_idx2 if card_idx == matched_idx1 else matched_idx1
+            replace_paired_cards(game_state, matched_idx1, matched_idx2)
+            
+            # 移除翻转状态，让新牌显示为背面
+            if matched_idx1 in game_state['flipped_cards']:
+                game_state['flipped_cards'].remove(matched_idx1)
+            if matched_idx2 in game_state['flipped_cards']:
+                game_state['flipped_cards'].remove(matched_idx2)
+            # 移除揭示状态
+            if matched_idx1 in game_state['revealed_cards']:
+                game_state['revealed_cards'].remove(matched_idx1)
+            if matched_idx2 in game_state['revealed_cards']:
+                game_state['revealed_cards'].remove(matched_idx2)
+            
+            # 清空匹配成功的牌对标记
+            game_state['matched_pairs'] = []
+            
+            # 继续处理当前点击的卡牌（作为新一组的第一张）
+            # 不返回，继续执行下面的逻辑
+        else:
+            # 点击了新卡牌，替换匹配成功的牌
+            replace_paired_cards(game_state, matched_idx1, matched_idx2)
+            
+            # 移除翻转状态，让新牌显示为背面
+            if matched_idx1 in game_state['flipped_cards']:
+                game_state['flipped_cards'].remove(matched_idx1)
+            if matched_idx2 in game_state['flipped_cards']:
+                game_state['flipped_cards'].remove(matched_idx2)
+            # 移除揭示状态
+            if matched_idx1 in game_state['revealed_cards']:
+                game_state['revealed_cards'].remove(matched_idx1)
+            if matched_idx2 in game_state['revealed_cards']:
+                game_state['revealed_cards'].remove(matched_idx2)
+            
+            # 清空匹配成功的牌对标记
+            game_state['matched_pairs'] = []
+            
+            # 继续处理新点击的卡牌
+            # 不返回，继续执行下面的逻辑
+    
     # 如果正在等待操作（匹配失败），点击新卡牌时翻回上一组牌
     if game_state['waiting_for_action']:
         # 翻回上一组匹配失败的牌
@@ -361,25 +408,15 @@ def handle_card_click(card_idx: int, game_state: Dict):
             
             st.session_state['last_effect'] = f"{effect1} {effect2}"
             
-            # 替换配对的牌，从牌堆抽取新牌补上空缺
-            replace_paired_cards(game_state, idx1, idx2)
-            
-            # 清空选中，重置翻转状态，让新牌可以正常操作
-            game_state['selected_cards'] = []
-            # 移除翻转状态，让新牌显示为背面
-            if idx1 in game_state['flipped_cards']:
-                game_state['flipped_cards'].remove(idx1)
-            if idx2 in game_state['flipped_cards']:
-                game_state['flipped_cards'].remove(idx2)
-            # 移除揭示状态
-            if idx1 in game_state['revealed_cards']:
-                game_state['revealed_cards'].remove(idx1)
-            if idx2 in game_state['revealed_cards']:
-                game_state['revealed_cards'].remove(idx2)
-            
-            # 匹配成功，可以继续翻牌
+            # 匹配成功，保持这两张牌翻开，等待玩家点击下一张牌时才替换
+            # 设置标记，表示有匹配成功的牌等待替换
+            game_state['matched_pairs'] = [idx1, idx2]
             game_state['can_continue_turn'] = True
             game_state['waiting_for_action'] = False
+            
+            # 清空选中状态，但保持翻转状态，让匹配成功的牌继续显示
+            game_state['selected_cards'] = []
+            # 不清空翻转状态，保持这两张牌翻开
             
             # 注意：不需要调用 st.rerun()，Streamlit 会在回调执行后自动重新运行脚本
         else:
@@ -565,6 +602,17 @@ def inject_css():
         }
     }
     
+    /* 移除 Streamlit 自动生成的 flex 属性 */
+    /* 注意：emotion-cache 类名是动态生成的，可能需要根据实际情况调整 */
+    .st-emotion-cache-1cmetgi {
+        flex: none !important;
+    }
+    
+    /* 如果需要更通用的覆盖，可以使用属性选择器 */
+    [class*="st-emotion-cache"][style*="flex"] {
+        flex: none !important;
+    }
+    
     /* 卡牌正面按钮 */
     .card-front-btn {
         background: white;
@@ -647,7 +695,10 @@ def main():
         st.subheader("游戏信息")
         st.caption(f"当前敌人: {enemy_num + 1}/3")
         if game_state['can_continue_turn']:
-            st.info("✓ 匹配成功！继续翻牌")
+            if game_state.get('matched_pairs') and len(game_state['matched_pairs']) == 2:
+                st.info("✓ 匹配成功！点击下一张牌继续...")
+            else:
+                st.info("✓ 匹配成功！继续翻牌")
         if game_state['enemy_turn']:
             st.warning("敌人回合")
         if game_state['waiting_for_action']:
@@ -745,9 +796,12 @@ def main():
                 is_selected = card_idx in game_state['selected_cards']
                 is_revealed = card_idx in game_state['revealed_cards']
                 is_blocked = game_state['current_enemy'] == 2 and (card_idx % 5) in game_state['blocked_columns']
+                # 检查是否是匹配成功但还未替换的牌
+                is_matched = game_state.get('matched_pairs') and card_idx in game_state['matched_pairs']
                 
                 # 注意：现在不再有removed_cards，配对后会被新牌替换
-                if is_flipped or is_selected:
+                # 匹配成功的牌即使不在selected_cards中，也应该显示为翻开状态
+                if is_flipped or is_selected or is_matched:
                     # 显示卡牌正面
                     color = get_card_color(card['suit'])
                     display_text = f"{card['suit']}\n{card['value']}"
@@ -755,7 +809,8 @@ def main():
                     button_class = "card-front-btn" + (" card-selected" if is_selected else "")
                     # 如果已经选中，可以取消选中；如果已翻开但未选中，在等待状态下可以点击
                     # 如果只有一张选中的牌，可以点击已翻开的牌作为第二张
-                    disabled = False if (game_state['waiting_for_action'] or len(game_state['selected_cards']) == 1) else (is_flipped and not is_selected)
+                    # 匹配成功的牌可以点击（作为新一组的第一张或触发替换）
+                    disabled = False if (game_state['waiting_for_action'] or len(game_state['selected_cards']) == 1 or is_matched) else (is_flipped and not is_selected)
                     st.button(
                         f"{button_style}{display_text}",
                         key=f"card_{card_idx}",
