@@ -23,6 +23,7 @@ def init_game_state():
             'blocked_columns': [],  # 敌人3禁止的列
             'can_continue_turn': False,  # 是否因为匹配成功可以继续
             'waiting_for_action': False,  # 是否等待玩家操作（匹配失败时）
+            'pending_new_card': False,  # 是否有待处理的新卡牌（敌人回合后处理）
             'draw_deck': [],  # 抽取牌堆（用于补充空缺）
             'paired_cards': [],  # 已配对的牌（用于重新混洗）
         }
@@ -94,10 +95,12 @@ def replace_paired_cards(game_state: Dict, card_idx1: int, card_idx2: int):
             else:
                 # 如果还是没有，创建一张新牌
                 suits = ['♠', '♥', '♣', '♦']
+                suit = random.choice(suits)
+                value = random.randint(1, 10)
                 game_state['deck'][card_idx1] = {
-                    'value': random.randint(1, 10),
-                    'suit': random.choice(suits),
-                    'id': f"{random.choice(suits)}{random.randint(1, 10)}"
+                    'value': value,
+                    'suit': suit,
+                    'id': f"{suit}{value}"
                 }
     
     if new_card2:
@@ -114,10 +117,12 @@ def replace_paired_cards(game_state: Dict, card_idx1: int, card_idx2: int):
             else:
                 # 如果还是没有，创建一张新牌
                 suits = ['♠', '♥', '♣', '♦']
+                suit = random.choice(suits)
+                value = random.randint(1, 10)
                 game_state['deck'][card_idx2] = {
-                    'value': random.randint(1, 10),
-                    'suit': random.choice(suits),
-                    'id': f"{random.choice(suits)}{random.randint(1, 10)}"
+                    'value': value,
+                    'suit': suit,
+                    'id': f"{suit}{value}"
                 }
 
 def get_card_color(suit: str) -> str:
@@ -259,11 +264,14 @@ def enemy_turn(game_state: Dict):
             game_state['game_over'] = True
     
     game_state['enemy_turn'] = False
-    game_state['selected_cards'] = []
+    # 如果有待处理的新卡牌，不清空selected_cards，保留它作为新一组的第一张
+    if not game_state.get('pending_new_card', False):
+        game_state['selected_cards'] = []
+    game_state['pending_new_card'] = False
 
 def handle_card_click(card_idx: int, game_state: Dict):
     """处理卡牌点击"""
-    if game_state['game_over'] or game_state['enemy_turn']:
+    if game_state['game_over']:
         return
     
     # 如果正在等待操作（匹配失败），点击新卡牌时翻回上一组牌
@@ -278,11 +286,22 @@ def handle_card_click(card_idx: int, game_state: Dict):
             game_state['selected_cards'] = []
             game_state['enemy_turn'] = True
             game_state['waiting_for_action'] = False
-            # 将新点击的卡牌作为下一组的第一张
-            # 继续执行下面的逻辑，将新点击的卡牌加入选中列表
+            # 执行敌人回合（但不在当前函数中执行，让主循环处理）
+            # 清空后，将新点击的卡牌作为新一组的第一张
+            # 先加入选中列表，然后让敌人回合处理，敌人回合后会保留它
+            game_state['selected_cards'].append(card_idx)
+            if card_idx not in game_state['flipped_cards']:
+                game_state['flipped_cards'].append(card_idx)
+            # 设置标记，表示这是新一组的第一张
+            game_state['pending_new_card'] = True
+            return  # 让主循环处理敌人回合，敌人回合后会保留selected_cards中的卡牌a
         else:
             # 如果还没有选中上一组牌，清空等待状态
             game_state['waiting_for_action'] = False
+    
+    # 敌人回合时不能点击卡牌
+    if game_state['enemy_turn']:
+        return
     
     # 检查是否被禁止
     if game_state['current_enemy'] == 2:
@@ -301,14 +320,22 @@ def handle_card_click(card_idx: int, game_state: Dict):
             game_state['flipped_cards'].remove(card_idx)
         return
     
-    # 如果已经翻开了（但未选中），说明是上一组匹配失败的牌，可以作为新一组的第一张
-    # 或者如果已经匹配成功但还没被替换，也可以点击
+    # 如果已经翻开了（但未选中），可能是上一组匹配失败的牌，或者是敌人回合后保留的第一张牌
+    # 如果当前没有选中的牌，可以将这张已翻开的牌作为新一组的第一张
+    # 如果已经有1张选中的牌，可以将这张已翻开的牌作为第二张
     if card_idx in game_state['flipped_cards'] and card_idx not in game_state['selected_cards']:
-        # 如果当前没有选中的牌，或者只有一张选中的牌，可以继续选择
-        if len(game_state['selected_cards']) < 2:
-            # 将这张牌作为新一组的第一张
+        if len(game_state['selected_cards']) == 0:
+            # 将这张已翻开的牌作为新一组的第一张
             game_state['selected_cards'].append(card_idx)
-            # 如果之前已经翻开了，保持翻开状态
+            # 保持翻开状态
+            return
+        elif len(game_state['selected_cards']) == 1:
+            # 如果已经有1张选中的牌，将这张已翻开的牌作为第二张
+            game_state['selected_cards'].append(card_idx)
+            # 继续执行匹配检查逻辑
+            # 不返回，继续执行下面的匹配检查
+        else:
+            # 如果已经有2张选中的牌，不应该再选择
             return
     
     # 最多选择2张牌
@@ -321,6 +348,7 @@ def handle_card_click(card_idx: int, game_state: Dict):
         game_state['flipped_cards'].append(card_idx)
     
     # 如果选中了2张牌，立即检查是否匹配并执行效果
+    # 注意：这里需要检查selected_cards的长度，因为可能已经有第一张牌（比如敌人回合后保留的）
     if len(game_state['selected_cards']) == 2:
         idx1, idx2 = game_state['selected_cards']
         card1 = game_state['deck'][idx1]
@@ -352,8 +380,9 @@ def handle_card_click(card_idx: int, game_state: Dict):
             # 匹配成功，可以继续翻牌
             game_state['can_continue_turn'] = True
             game_state['waiting_for_action'] = False
-            # 注意：这里不清空flipped_cards，因为匹配成功后卡牌已经被替换为新牌
-            # 新牌默认是背面状态，所以不需要额外的处理
+            
+            # 立即刷新页面以显示新卡牌
+            st.rerun()
         else:
             # 匹配失败，保持翻开状态，等待玩家点击下一组牌时翻回去
             game_state['waiting_for_action'] = True
@@ -531,11 +560,13 @@ def main():
         if 'last_effect' in st.session_state:
             st.success(st.session_state['last_effect'])
     
-    # 敌人回合处理
+    # 敌人回合处理（在渲染前检查，如果enemy_turn为True，执行敌人回合）
     if game_state['enemy_turn']:
         enemy_turn(game_state)
         if not game_state['game_over']:
             st.rerun()
+        else:
+            return  # 游戏结束，不继续渲染
     
     # 游戏结束检查
     if game_state['game_over']:
@@ -570,22 +601,45 @@ def main():
                 if card_idx >= len(game_state['deck']):
                     # 如果deck不够，创建新牌
                     suits = ['♠', '♥', '♣', '♦']
+                    suit = random.choice(suits)
+                    value = random.randint(1, 10)
                     game_state['deck'].append({
-                        'value': random.randint(1, 10),
-                        'suit': random.choice(suits),
-                        'id': f"{random.choice(suits)}{random.randint(1, 10)}"
+                        'value': value,
+                        'suit': suit,
+                        'id': f"{suit}{value}"
                     })
+                
+                # 确保deck[card_idx]存在且有效
+                if card_idx >= len(game_state['deck']) or not game_state['deck'][card_idx]:
+                    # 如果card不存在或无效，创建一张新牌
+                    suits = ['♠', '♥', '♣', '♦']
+                    suit = random.choice(suits)
+                    value = random.randint(1, 10)
+                    if card_idx >= len(game_state['deck']):
+                        game_state['deck'].append({
+                            'value': value,
+                            'suit': suit,
+                            'id': f"{suit}{value}"
+                        })
+                    else:
+                        game_state['deck'][card_idx] = {
+                            'value': value,
+                            'suit': suit,
+                            'id': f"{suit}{value}"
+                        }
                 
                 card = game_state['deck'][card_idx]
                 
-                # 确保card不是None
-                if not card:
-                    # 如果card是None，创建一张新牌
+                # 确保card有必需的字段
+                if not isinstance(card, dict) or 'value' not in card or 'suit' not in card:
+                    # 如果card结构不完整，创建一张新牌
                     suits = ['♠', '♥', '♣', '♦']
+                    suit = random.choice(suits)
+                    value = random.randint(1, 10)
                     card = {
-                        'value': random.randint(1, 10),
-                        'suit': random.choice(suits),
-                        'id': f"{random.choice(suits)}{random.randint(1, 10)}"
+                        'value': value,
+                        'suit': suit,
+                        'id': f"{suit}{value}"
                     }
                     game_state['deck'][card_idx] = card
                 
@@ -602,8 +656,9 @@ def main():
                     display_text = f"{card['suit']}\n{card['value']}"
                     button_style = "🔴 " if is_selected else ""
                     button_class = "card-front-btn" + (" card-selected" if is_selected else "")
-                    # 在等待状态下（匹配失败），允许点击新卡牌来翻回上一组牌
-                    disabled = False if game_state['waiting_for_action'] else (is_flipped and not is_selected)
+                    # 如果已经选中，可以取消选中；如果已翻开但未选中，在等待状态下可以点击
+                    # 如果只有一张选中的牌，可以点击已翻开的牌作为第二张
+                    disabled = False if (game_state['waiting_for_action'] or len(game_state['selected_cards']) == 1) else (is_flipped and not is_selected)
                     st.button(
                         f"{button_style}{display_text}",
                         key=f"card_{card_idx}",
