@@ -549,7 +549,7 @@ def inject_css():
         width: 100%;
         aspect-ratio: 2 / 3 !important;
         min-height: 80px;
-        max-height: 150px;
+        max-width: 84px;
         font-size: 20px;
         border-radius: 8px;
         border: 2px solid #333;
