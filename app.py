@@ -602,15 +602,17 @@ def inject_css():
         }
     }
     
-    /* 移除 Streamlit 自动生成的 flex 属性 */
+    /* 移除 Streamlit 自动生成的 flex 和 width 属性 */
     /* 注意：emotion-cache 类名是动态生成的，可能需要根据实际情况调整 */
     .st-emotion-cache-1cmetgi {
         flex: none !important;
+        width: auto !important;
     }
     
     /* 如果需要更通用的覆盖，可以使用属性选择器 */
-    [class*="st-emotion-cache"][style*="flex"] {
+    [class*="st-emotion-cache"] {
         flex: none !important;
+        width: auto !important;
     }
     
     /* 卡牌正面按钮 */
