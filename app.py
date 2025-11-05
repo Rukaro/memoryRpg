@@ -278,7 +278,8 @@ def handle_card_click(card_idx: int, game_state: Dict):
             game_state['selected_cards'] = []
             game_state['enemy_turn'] = True
             game_state['waiting_for_action'] = False
-            # 继续处理新点击的卡牌
+            # 将新点击的卡牌作为下一组的第一张
+            # 继续执行下面的逻辑，将新点击的卡牌加入选中列表
         else:
             # 如果还没有选中上一组牌，清空等待状态
             game_state['waiting_for_action'] = False
@@ -289,9 +290,9 @@ def handle_card_click(card_idx: int, game_state: Dict):
         if col in game_state['blocked_columns']:
             return
     
-    # 检查卡牌是否已被移除
-    if card_idx in game_state['removed_cards']:
-        return
+    # 检查卡牌是否已被移除（这个检查现在可能不需要了，但保留作为保险）
+    # if card_idx in game_state['removed_cards']:
+    #     return
     
     # 如果已经选中，则取消选中（翻回去）
     if card_idx in game_state['selected_cards']:
@@ -300,15 +301,21 @@ def handle_card_click(card_idx: int, game_state: Dict):
             game_state['flipped_cards'].remove(card_idx)
         return
     
-    # 如果已经翻开了（但未选中），说明是已匹配的牌，不能再次选中
+    # 如果已经翻开了（但未选中），说明是上一组匹配失败的牌，可以作为新一组的第一张
+    # 或者如果已经匹配成功但还没被替换，也可以点击
     if card_idx in game_state['flipped_cards'] and card_idx not in game_state['selected_cards']:
-        return
+        # 如果当前没有选中的牌，或者只有一张选中的牌，可以继续选择
+        if len(game_state['selected_cards']) < 2:
+            # 将这张牌作为新一组的第一张
+            game_state['selected_cards'].append(card_idx)
+            # 如果之前已经翻开了，保持翻开状态
+            return
     
     # 最多选择2张牌
     if len(game_state['selected_cards']) >= 2:
         return
     
-    # 添加到选中列表并立即翻开
+    # 添加到选中列表并立即翻开（作为第一张或第二张）
     game_state['selected_cards'].append(card_idx)
     if card_idx not in game_state['flipped_cards']:
         game_state['flipped_cards'].append(card_idx)
@@ -345,6 +352,8 @@ def handle_card_click(card_idx: int, game_state: Dict):
             # 匹配成功，可以继续翻牌
             game_state['can_continue_turn'] = True
             game_state['waiting_for_action'] = False
+            # 注意：这里不清空flipped_cards，因为匹配成功后卡牌已经被替换为新牌
+            # 新牌默认是背面状态，所以不需要额外的处理
         else:
             # 匹配失败，保持翻开状态，等待玩家点击下一组牌时翻回去
             game_state['waiting_for_action'] = True
