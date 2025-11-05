@@ -439,9 +439,9 @@ def inject_css():
         }
     }
     
-    /* 卡牌容器 - 真实比例 3:2 */
+    /* 卡牌容器 - 宽度是高度的2/3，即宽:高 = 2:3 */
     .card-container {
-        aspect-ratio: 3 / 2;
+        aspect-ratio: 2 / 3;
         width: 100%;
         max-width: 150px;
         margin: 0 auto;
@@ -507,10 +507,10 @@ def inject_css():
         cursor: not-allowed;
     }
     
-    /* Streamlit按钮样式覆盖 - 确保所有按钮都是卡牌比例 3:2 */
+    /* Streamlit按钮样式覆盖 - 确保所有按钮都是卡牌比例 2:3 (宽度是高度的2/3) */
     .stButton > button {
         width: 100%;
-        aspect-ratio: 3 / 2 !important;
+        aspect-ratio: 2 / 3 !important;
         min-height: 80px;
         max-height: 150px;
         font-size: 20px;
