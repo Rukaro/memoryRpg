@@ -563,12 +563,15 @@ def inject_css():
         cursor: not-allowed;
     }
     
-    /* Streamlit按钮样式覆盖 - 确保所有按钮都是卡牌比例 2:3 (宽度是高度的2/3) */
+    /* Streamlit按钮样式覆盖 - 确保所有按钮都是固定的卡牌尺寸 2:3 (宽度是高度的2/3) */
     .stButton > button {
-        width: 100%;
+        width: 100% !important;
         aspect-ratio: 2 / 3 !important;
-        min-height: 80px;
-        max-width: 84px;
+        height: auto !important;
+        min-height: 80px !important;
+        max-height: 120px !important;
+        max-width: 84px !important;
+        min-width: 56px !important;
         font-size: 18px;
         font-weight: bold;
         border-radius: 8px;
@@ -581,19 +584,44 @@ def inject_css():
         transition: all 0.2s ease;
         white-space: normal;
         word-wrap: break-word;
+        /* 确保固定尺寸 */
+        flex-shrink: 0;
+        flex-grow: 0;
     }
     
-    /* 卡牌正面样式 - 白色背景 */
-    .stButton > button[data-baseweb="button"] {
-        background: white;
-        color: #333;
+    /* 卡牌正面样式 - 白色背景（primary类型，包含文本内容） */
+    .stButton > button[data-baseweb="button"][kind="primary"] {
+        background: white !important;
+        color: #333 !important;
+        border-color: #ddd !important;
     }
     
-    /* 卡牌背面样式 - 深蓝色背景 */
-    .stButton > button:contains("🂠") {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-        color: white;
-        border-color: #1a252f;
+    /* 卡牌背面样式 - 灰色背景（secondary类型，空内容或只有🚫） */
+    .stButton > button[data-baseweb="button"][kind="secondary"] {
+        background: #e0e0e0 !important;
+        color: #666 !important;
+        border-color: #bbb !important;
+    }
+    
+    /* 卡牌选中高亮 - 红色边框（选中时使用secondary类型且包含文本） */
+    /* 选中状态的卡牌：secondary类型 + 包含换行符（即有卡牌内容） */
+    .stButton > button[data-baseweb="button"][kind="secondary"]:not(:disabled):not(:empty) {
+        border: 2px solid #ff4444 !important;
+        box-shadow: 0 0 10px rgba(255, 68, 68, 0.5) !important;
+        background: #fff5f5 !important;
+    }
+    
+    /* 空按钮（背面）保持灰色 - 优先级更高 */
+    .stButton > button[data-baseweb="button"][kind="secondary"]:empty,
+    .stButton > button[data-baseweb="button"][kind="secondary"]:not(:has(*)):not(:has-text) {
+        background: #e0e0e0 !important;
+        border-color: #bbb !important;
+        color: #666 !important;
+    }
+    
+    /* 被禁止的卡牌 */
+    .stButton > button[data-baseweb="button"][kind="secondary"]:disabled {
+        opacity: 0.5 !important;
     }
     
     /* 卡牌悬停效果 */
@@ -602,21 +630,15 @@ def inject_css():
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
     
-    /* 卡牌选中高亮 */
-    .stButton > button[data-baseweb="button"][kind="secondary"] {
-        border: 2px solid #ff4444 !important;
-        box-shadow: 0 0 10px rgba(255, 68, 68, 0.5) !important;
-        background: #fff5f5 !important;
-    }
-    
-    /* 移动端按钮样式 */
+    /* 移动端按钮样式 - 保持固定尺寸 */
     @media (max-width: 768px) {
         .stButton > button {
-            min-height: 50px !important;
-            max-height: 80px !important;
+            min-height: 60px !important;
+            max-height: 90px !important;
+            max-width: 60px !important;
             font-size: 14px !important;
             border-radius: 6px !important;
-            border: 1px solid #333 !important;
+            border: 1px solid #ddd !important;
         }
     }
     
@@ -908,11 +930,11 @@ def main():
                         disabled = True  # 其他情况下，已翻开的牌不能点击（不能翻回去）
                     
                     # 使用简洁的文本格式显示卡牌
-                    display_text = f"{card['suit']} {card['value']}"
-                    button_style = "🔴 " if is_selected else ""
+                    display_text = f"{card['suit']}\n{card['value']}"
                     
+                    # 选中时使用secondary类型显示红色边框，未选中使用primary类型显示白色背景
                     st.button(
-                        f"{button_style}{display_text}",
+                        display_text,
                         key=f"card_{card_idx}",
                         disabled=disabled,
                         on_click=handle_card_click,
@@ -935,9 +957,9 @@ def main():
                         help=f"这张牌是 {card['value']} 点（已被方片效果揭示）"
                     )
                 else:
-                    # 显示卡牌背面 - 简洁样式
-                    button_label = "🚫" if is_blocked else "🂠"
+                    # 显示卡牌背面 - 灰色背景
                     disabled = is_blocked and not game_state['waiting_for_action']
+                    button_label = "🚫" if is_blocked else ""
                     st.button(
                         button_label,
                         key=f"card_{card_idx}",
@@ -945,7 +967,8 @@ def main():
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
                         use_container_width=True,
-                        help="点击翻牌" if not is_blocked else "此列被禁止"
+                        help="点击翻牌" if not is_blocked else "此列被禁止",
+                        type="secondary"
                     )
     
     # 游戏说明
