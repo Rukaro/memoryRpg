@@ -23,6 +23,8 @@ def init_game_state():
             'blocked_columns': [],  # 敌人3禁止的列
             'can_continue_turn': False,  # 是否因为匹配成功可以继续
             'waiting_for_action': False,  # 是否等待玩家操作
+            'waiting_for_effect': False,  # 是否等待玩家点击执行效果
+            'effect_executed': False,  # 效果是否已执行
             'flip_timestamp': None,  # 翻牌时间戳
             'draw_deck': [],  # 抽取牌堆（用于补充空缺）
             'paired_cards': [],  # 已配对的牌（用于重新混洗）
@@ -234,7 +236,7 @@ def enemy_turn(game_state: Dict):
     game_state['selected_cards'] = []
 
 def handle_continue_click(game_state: Dict):
-    """处理继续按钮点击"""
+    """处理继续点击（点击任意位置）"""
     if game_state['waiting_for_action']:
         # 检查是否匹配失败，需要翻回去
         if len(game_state['selected_cards']) == 2:
@@ -253,15 +255,27 @@ def handle_continue_click(game_state: Dict):
         
         game_state['waiting_for_action'] = False
         game_state['can_continue_turn'] = False
+    
+    # 如果正在等待效果执行，标记为已执行
+    if game_state.get('waiting_for_effect', False):
+        game_state['effect_executed'] = True
+        game_state['waiting_for_effect'] = False
 
 def handle_card_click(card_idx: int, game_state: Dict):
     """处理卡牌点击"""
     if game_state['game_over'] or game_state['enemy_turn']:
         return
     
-    # 如果正在等待操作，点击卡牌视为继续
+    # 如果正在等待操作，点击任意卡牌视为继续
     if game_state['waiting_for_action']:
         handle_continue_click(game_state)
+        return
+    
+    # 如果正在等待效果执行，点击任意卡牌继续执行效果
+    if game_state.get('waiting_for_effect', False):
+        game_state['effect_executed'] = True
+        game_state['waiting_for_effect'] = False
+        st.rerun()
         return
     
     # 检查是否被禁止
@@ -301,16 +315,17 @@ def handle_card_click(card_idx: int, game_state: Dict):
         card1 = game_state['deck'][idx1]
         card2 = game_state['deck'][idx2]
         
-        # 标记为等待状态（等待2秒或玩家点击）
+        # 标记为等待状态（等待玩家点击）
         game_state['waiting_for_action'] = True
+        game_state['effect_executed'] = False  # 重置效果执行标志
 
 def inject_css():
     """注入CSS样式，实现卡牌翻转动画和真实比例"""
     st.markdown("""
     <style>
-    /* 卡牌容器 - 真实比例 2:3 */
+    /* 卡牌容器 - 真实比例 3:2 */
     .card-container {
-        aspect-ratio: 2 / 3;
+        aspect-ratio: 3 / 2;
         width: 100%;
         max-width: 150px;
         margin: 0 auto;
@@ -369,12 +384,12 @@ def inject_css():
         cursor: not-allowed;
     }
     
-    /* Streamlit按钮样式覆盖 - 确保所有按钮都是卡牌比例 */
+    /* Streamlit按钮样式覆盖 - 确保所有按钮都是卡牌比例 3:2 */
     .stButton > button {
         width: 100%;
-        aspect-ratio: 2 / 3 !important;
-        min-height: 120px;
-        max-height: 200px;
+        aspect-ratio: 3 / 2 !important;
+        min-height: 80px;
+        max-height: 150px;
         font-size: 20px;
         border-radius: 8px;
         border: 2px solid #333;
@@ -470,66 +485,56 @@ def main():
         if game_state['enemy_turn']:
             st.warning("敌人回合")
         if game_state['waiting_for_action']:
-            # 检查是否已经过了翻转动画时间(0.5s) + 等待时间(2s) = 2.5s
-            if game_state['flip_timestamp']:
-                elapsed = time.time() - game_state['flip_timestamp']
+            # 检查是否匹配成功或失败
+            if len(game_state['selected_cards']) == 2:
+                idx1, idx2 = game_state['selected_cards']
+                card1 = game_state['deck'][idx1]
+                card2 = game_state['deck'][idx2]
+                is_match = card1['value'] == card2['value']
                 
-                # 检查是否匹配成功或失败
-                if len(game_state['selected_cards']) == 2:
-                    idx1, idx2 = game_state['selected_cards']
-                    card1 = game_state['deck'][idx1]
-                    card2 = game_state['deck'][idx2]
-                    is_match = card1['value'] == card2['value']
-                else:
-                    is_match = False
-                
-                # 卡牌已经翻开，直接处理匹配结果
-                if len(game_state['selected_cards']) == 2:
-                    idx1, idx2 = game_state['selected_cards']
+                # 如果是匹配成功，先等待玩家点击再执行效果
+                if is_match:
+                    # 如果还没有执行效果，等待玩家点击
+                    if not game_state.get('effect_executed', False):
+                        st.info("✓ 匹配成功！点击任意位置执行效果...")
+                        game_state['waiting_for_effect'] = True
+                        return  # 等待玩家点击
                     
-                    # 如果是匹配成功，立即继续
-                    if is_match:
-                            # 应用两张牌的效果
-                            effect1 = apply_card_effect(card1['suit'], card1['value'], game_state)
-                            effect2 = apply_card_effect(card2['suit'], card2['value'], game_state)
-                            
-                            st.session_state['last_effect'] = f"{effect1} {effect2}"
-                            
-                            # 替换配对的牌，从牌堆抽取新牌补上空缺
-                            replace_paired_cards(game_state, idx1, idx2)
-                            
-                            # 移除卡牌状态（不再是移除，而是被新牌替换）
-                            # 清空选中，重置翻转状态，让新牌可以正常操作
-                            game_state['selected_cards'] = []
-                            # 移除翻转状态，让新牌显示为背面
-                            if idx1 in game_state['flipped_cards']:
-                                game_state['flipped_cards'].remove(idx1)
-                            if idx2 in game_state['flipped_cards']:
-                                game_state['flipped_cards'].remove(idx2)
-                            # 移除揭示状态
-                            if idx1 in game_state['revealed_cards']:
-                                game_state['revealed_cards'].remove(idx1)
-                            if idx2 in game_state['revealed_cards']:
-                                game_state['revealed_cards'].remove(idx2)
-                            
-                            # 清空选中，可以继续翻牌
-                            game_state['can_continue_turn'] = True
-                            game_state['waiting_for_action'] = False
-                            
-                            st.rerun()
-                
-                # 匹配失败，等待2秒
-                if elapsed >= 2.0:
-                    # 自动继续
-                    handle_continue_click(game_state)
+                    # 执行效果（只有在effect_executed为True时才会执行到这里）
+                    effect1 = apply_card_effect(card1['suit'], card1['value'], game_state)
+                    effect2 = apply_card_effect(card2['suit'], card2['value'], game_state)
+                    
+                    st.session_state['last_effect'] = f"{effect1} {effect2}"
+                    
+                    # 替换配对的牌，从牌堆抽取新牌补上空缺
+                    replace_paired_cards(game_state, idx1, idx2)
+                    
+                    # 移除卡牌状态（不再是移除，而是被新牌替换）
+                    # 清空选中，重置翻转状态，让新牌可以正常操作
+                    game_state['selected_cards'] = []
+                    # 移除翻转状态，让新牌显示为背面
+                    if idx1 in game_state['flipped_cards']:
+                        game_state['flipped_cards'].remove(idx1)
+                    if idx2 in game_state['flipped_cards']:
+                        game_state['flipped_cards'].remove(idx2)
+                    # 移除揭示状态
+                    if idx1 in game_state['revealed_cards']:
+                        game_state['revealed_cards'].remove(idx1)
+                    if idx2 in game_state['revealed_cards']:
+                        game_state['revealed_cards'].remove(idx2)
+                    
+                    # 重置效果执行标志
+                    game_state['effect_executed'] = False
+                    game_state['waiting_for_effect'] = False
+                    
+                    # 清空选中，可以继续翻牌
+                    game_state['can_continue_turn'] = True
+                    game_state['waiting_for_action'] = False
+                    
                     st.rerun()
                 else:
-                    # 等待2秒
-                    remaining = 2.0 - elapsed
-                    st.warning(f"等待中... ({remaining:.1f}秒后自动继续)")
-                    if st.button("继续", key="continue_btn"):
-                        handle_continue_click(game_state)
-                        st.rerun()
+                    # 匹配失败，等待玩家点击继续
+                    st.warning("✗ 匹配失败，点击任意位置继续...")
         if 'last_effect' in st.session_state:
             st.success(st.session_state['last_effect'])
     
@@ -583,19 +588,24 @@ def main():
                     display_text = f"{card['suit']}\n{card['value']}"
                     button_style = "🔴 " if is_selected else ""
                     button_class = "card-front-btn" + (" card-selected" if is_selected else "")
+                    # 在等待状态下，即使已翻开的卡牌也可以点击来继续
+                    disabled = False if game_state['waiting_for_action'] or game_state.get('waiting_for_effect', False) else (is_flipped and not is_selected)
                     st.button(
                         f"{button_style}{display_text}",
                         key=f"card_{card_idx}",
-                        disabled=is_flipped and not is_selected,
+                        disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
                         use_container_width=True
                     )
                 elif is_revealed:
                     # 被揭示的牌，显示提示（但未选中或翻开）
+                    # 在等待状态下，也可以点击来继续
+                    disabled = False if (game_state['waiting_for_action'] or game_state.get('waiting_for_effect', False)) else False
                     st.button(
                         f"❓\n{card['value']}",
                         key=f"card_{card_idx}",
+                        disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
                         use_container_width=True,
@@ -603,11 +613,13 @@ def main():
                     )
                 else:
                     # 显示卡牌背面 - 确保有正确的比例
+                    # 在等待状态下，背面卡牌也可以点击来继续
                     button_label = "🚫" if is_blocked else "🂠"
+                    disabled = is_blocked and not (game_state['waiting_for_action'] or game_state.get('waiting_for_effect', False))
                     st.button(
                         button_label,
                         key=f"card_{card_idx}",
-                        disabled=is_blocked or game_state['waiting_for_action'],
+                        disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
                         use_container_width=True
