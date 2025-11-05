@@ -564,14 +564,22 @@ def inject_css():
     }
     
     /* Streamlit按钮样式覆盖 - 确保所有按钮都是固定的卡牌尺寸 2:3 (宽度是高度的2/3) */
+    .stButton {
+        width: 80px !important;
+        height: 120px !important;
+        flex-shrink: 0 !important;
+        flex-grow: 0 !important;
+        margin: 0 auto !important;
+    }
+    
     .stButton > button {
-        width: 100% !important;
+        width: 80px !important;
+        height: 120px !important;
         aspect-ratio: 2 / 3 !important;
-        height: auto !important;
-        min-height: 80px !important;
+        min-height: 120px !important;
         max-height: 120px !important;
-        max-width: 84px !important;
-        min-width: 56px !important;
+        min-width: 80px !important;
+        max-width: 80px !important;
         font-size: 18px;
         font-weight: bold;
         border-radius: 8px;
@@ -585,8 +593,10 @@ def inject_css():
         white-space: normal;
         word-wrap: break-word;
         /* 确保固定尺寸 */
-        flex-shrink: 0;
-        flex-grow: 0;
+        flex-shrink: 0 !important;
+        flex-grow: 0 !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
     }
     
     /* 卡牌正面样式 - 白色背景（primary类型，包含文本内容） */
@@ -632,10 +642,18 @@ def inject_css():
     
     /* 移动端按钮样式 - 保持固定尺寸 */
     @media (max-width: 768px) {
+        .stButton {
+            width: 50px !important;
+            height: 75px !important;
+        }
+        
         .stButton > button {
-            min-height: 60px !important;
-            max-height: 90px !important;
-            max-width: 60px !important;
+            width: 50px !important;
+            height: 75px !important;
+            min-height: 75px !important;
+            max-height: 75px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
             font-size: 14px !important;
             border-radius: 6px !important;
             border: 1px solid #ddd !important;
@@ -939,7 +957,7 @@ def main():
                         disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
-                        use_container_width=True,
+                        use_container_width=False,
                         help=f"{card['suit']} {card['value']}",
                         type="secondary" if is_selected else "primary"
                     )
@@ -953,7 +971,7 @@ def main():
                         disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
-                        use_container_width=True,
+                        use_container_width=False,
                         help=f"这张牌是 {card['value']} 点（已被方片效果揭示）"
                     )
                 else:
@@ -966,7 +984,7 @@ def main():
                         disabled=disabled,
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
-                        use_container_width=True,
+                        use_container_width=False,
                         help="点击翻牌" if not is_blocked else "此列被禁止",
                         type="secondary"
                     )
