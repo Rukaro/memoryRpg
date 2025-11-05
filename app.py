@@ -1,6 +1,8 @@
 import streamlit as st
 import random
+import time
 from typing import List, Tuple, Optional, Dict
+from datetime import datetime
 
 # 初始化游戏状态
 def init_game_state():
@@ -20,6 +22,9 @@ def init_game_state():
             'revealed_cards': [],  # 方片效果揭示的卡牌
             'blocked_columns': [],  # 敌人3禁止的列
             'can_continue_turn': False,  # 是否因为匹配成功可以继续
+            'waiting_for_action': False,  # 是否等待玩家操作
+            'flip_timestamp': None,  # 翻牌时间戳
+            'cards_flipping': [],  # 正在翻转的卡牌
         }
 
 def create_deck() -> List[Dict]:
@@ -179,9 +184,35 @@ def enemy_turn(game_state: Dict):
     game_state['enemy_turn'] = False
     game_state['selected_cards'] = []
 
+def handle_continue_click(game_state: Dict):
+    """处理继续按钮点击"""
+    if game_state['waiting_for_action']:
+        # 检查是否匹配失败，需要翻回去
+        if len(game_state['selected_cards']) == 2:
+            idx1, idx2 = game_state['selected_cards']
+            card1 = game_state['deck'][idx1]
+            card2 = game_state['deck'][idx2]
+            
+            if card1['value'] != card2['value']:
+                # 匹配失败，翻回去并轮到敌人
+                if idx1 in game_state['flipped_cards']:
+                    game_state['flipped_cards'].remove(idx1)
+                if idx2 in game_state['flipped_cards']:
+                    game_state['flipped_cards'].remove(idx2)
+                game_state['selected_cards'] = []
+                game_state['enemy_turn'] = True
+        
+        game_state['waiting_for_action'] = False
+        game_state['can_continue_turn'] = False
+
 def handle_card_click(card_idx: int, game_state: Dict):
     """处理卡牌点击"""
     if game_state['game_over'] or game_state['enemy_turn']:
+        return
+    
+    # 如果正在等待操作，点击卡牌视为继续
+    if game_state['waiting_for_action']:
+        handle_continue_click(game_state)
         return
     
     # 检查是否被禁止
@@ -209,53 +240,129 @@ def handle_card_click(card_idx: int, game_state: Dict):
     if len(game_state['selected_cards']) >= 2:
         return
     
-    # 添加到选中列表并立即翻开
+    # 添加到选中列表并标记为翻转中
     game_state['selected_cards'].append(card_idx)
-    if card_idx not in game_state['flipped_cards']:
-        game_state['flipped_cards'].append(card_idx)
+    if card_idx not in game_state['cards_flipping']:
+        game_state['cards_flipping'].append(card_idx)
     
-    # 如果选中了2张牌，检查是否匹配
+    # 如果选中了2张牌，记录翻牌时间并检查是否匹配
     if len(game_state['selected_cards']) == 2:
+        game_state['flip_timestamp'] = time.time()
         idx1, idx2 = game_state['selected_cards']
         card1 = game_state['deck'][idx1]
         card2 = game_state['deck'][idx2]
         
-        if card1['value'] == card2['value']:
-            # 匹配成功（卡牌已经在flipped_cards中）
-            if idx1 not in game_state['removed_cards']:
-                game_state['removed_cards'].append(idx1)
-            if idx2 not in game_state['removed_cards']:
-                game_state['removed_cards'].append(idx2)
-            
-            # 应用两张牌的效果
-            effect1 = apply_card_effect(card1['suit'], card1['value'], game_state)
-            effect2 = apply_card_effect(card2['suit'], card2['value'], game_state)
-            
-            st.session_state['last_effect'] = f"{effect1} {effect2}"
-            
-            # 清空选中，可以继续翻牌
-            game_state['selected_cards'] = []
-            game_state['can_continue_turn'] = True
-            
-            # 检查是否所有牌都已移除
-            if len(game_state['removed_cards']) == 20:
-                # 重新洗牌
-                game_state['deck'] = create_deck()
-                game_state['flipped_cards'] = []
-                game_state['removed_cards'] = []
-                game_state['revealed_cards'] = []
-        else:
-            # 匹配失败，翻回去并轮到敌人
-            if idx1 in game_state['flipped_cards']:
-                game_state['flipped_cards'].remove(idx1)
-            if idx2 in game_state['flipped_cards']:
-                game_state['flipped_cards'].remove(idx2)
-            game_state['selected_cards'] = []
-            game_state['enemy_turn'] = True
-            game_state['can_continue_turn'] = False
+        # 标记为等待状态（等待翻转动画完成）
+        game_state['waiting_for_action'] = True
+        # 保持翻转中状态，等待动画完成后处理
+
+def inject_css():
+    """注入CSS样式，实现卡牌翻转动画和真实比例"""
+    st.markdown("""
+    <style>
+    /* 卡牌容器 - 真实比例 2:3 */
+    .card-container {
+        aspect-ratio: 2 / 3;
+        width: 100%;
+        max-width: 150px;
+        margin: 0 auto;
+        perspective: 1000px;
+    }
+    
+    /* 卡牌翻转容器 */
+    .card-flip {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+        transition: transform 0.5s;
+    }
+    
+    /* 翻转动画 */
+    .card-flip.flipped {
+        transform: rotateY(180deg);
+    }
+    
+    /* 卡牌正面和背面 */
+    .card-face {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 2px solid #333;
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .card-back {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .card-front {
+        background: white;
+        transform: rotateY(180deg);
+        color: #333;
+    }
+    
+    /* 选中的卡牌高亮 */
+    .card-selected {
+        box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+        border-color: red !important;
+    }
+    
+    /* 禁止的卡牌 */
+    .card-blocked {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    /* Streamlit按钮样式覆盖 */
+    .stButton > button {
+        width: 100%;
+        aspect-ratio: 2 / 3;
+        min-height: 120px;
+        max-height: 200px;
+        font-size: 20px;
+        border-radius: 8px;
+        border: 2px solid #333;
+    }
+    
+    /* 卡牌背面按钮 */
+    .card-back-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    /* 卡牌正面按钮 */
+    .card-front-btn {
+        background: white;
+        color: #333;
+    }
+    
+    /* 翻转动画类 */
+    @keyframes flip {
+        from {
+            transform: rotateY(0deg);
+        }
+        to {
+            transform: rotateY(180deg);
+        }
+    }
+    
+    .card-flipping {
+        animation: flip 0.5s ease-in-out;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 def main():
     st.set_page_config(page_title="记忆RPG", layout="wide")
+    inject_css()
     st.title("🎮 记忆RPG游戏")
     
     init_game_state()
@@ -305,6 +412,79 @@ def main():
             st.info("✓ 匹配成功！继续翻牌")
         if game_state['enemy_turn']:
             st.warning("敌人回合")
+        if game_state['waiting_for_action']:
+            # 检查是否已经过了翻转动画时间(0.5s) + 等待时间(2s) = 2.5s
+            if game_state['flip_timestamp']:
+                elapsed = time.time() - game_state['flip_timestamp']
+                
+                # 检查是否匹配成功或失败
+                if len(game_state['selected_cards']) == 2:
+                    idx1, idx2 = game_state['selected_cards']
+                    card1 = game_state['deck'][idx1]
+                    card2 = game_state['deck'][idx2]
+                    is_match = card1['value'] == card2['value']
+                else:
+                    is_match = False
+                
+                if elapsed >= 0.5:
+                    # 翻转动画已完成，将卡牌标记为已翻开
+                    if len(game_state['selected_cards']) == 2:
+                        idx1, idx2 = game_state['selected_cards']
+                        if idx1 not in game_state['flipped_cards']:
+                            game_state['flipped_cards'].append(idx1)
+                        if idx2 not in game_state['flipped_cards']:
+                            game_state['flipped_cards'].append(idx2)
+                        
+                        # 移除翻转中的标记
+                        if idx1 in game_state['cards_flipping']:
+                            game_state['cards_flipping'].remove(idx1)
+                        if idx2 in game_state['cards_flipping']:
+                            game_state['cards_flipping'].remove(idx2)
+                        
+                        # 如果是匹配成功，立即继续
+                        if is_match:
+                            if idx1 not in game_state['removed_cards']:
+                                game_state['removed_cards'].append(idx1)
+                            if idx2 not in game_state['removed_cards']:
+                                game_state['removed_cards'].append(idx2)
+                            
+                            # 应用两张牌的效果
+                            effect1 = apply_card_effect(card1['suit'], card1['value'], game_state)
+                            effect2 = apply_card_effect(card2['suit'], card2['value'], game_state)
+                            
+                            st.session_state['last_effect'] = f"{effect1} {effect2}"
+                            
+                            # 清空选中，可以继续翻牌
+                            game_state['selected_cards'] = []
+                            game_state['can_continue_turn'] = True
+                            game_state['waiting_for_action'] = False
+                            
+                            # 检查是否所有牌都已移除
+                            if len(game_state['removed_cards']) == 20:
+                                # 重新洗牌
+                                game_state['deck'] = create_deck()
+                                game_state['flipped_cards'] = []
+                                game_state['removed_cards'] = []
+                                game_state['revealed_cards'] = []
+                            
+                            st.rerun()
+                
+                # 匹配失败，等待2秒
+                if elapsed >= 2.5:
+                    # 自动继续
+                    handle_continue_click(game_state)
+                    st.rerun()
+                elif elapsed >= 0.5:
+                    # 翻转动画已完成，等待2秒
+                    remaining = 2.5 - elapsed
+                    st.warning(f"等待中... ({remaining:.1f}秒后自动继续)")
+                    if st.button("继续", key="continue_btn"):
+                        handle_continue_click(game_state)
+                        st.rerun()
+                else:
+                    # 翻转动画进行中
+                    remaining = 0.5 - elapsed
+                    st.info(f"卡牌翻转中... ({remaining:.1f}秒)")
         if 'last_effect' in st.session_state:
             st.success(st.session_state['last_effect'])
     
@@ -351,14 +531,28 @@ def main():
                 is_selected = card_idx in game_state['selected_cards']
                 is_revealed = card_idx in game_state['revealed_cards']
                 is_blocked = game_state['current_enemy'] == 2 and (card_idx % 5) in game_state['blocked_columns']
+                is_flipping = card_idx in game_state['cards_flipping']
                 
                 if is_removed:
                     st.button("", disabled=True, key=f"card_{card_idx}")
+                elif is_flipping:
+                    # 正在翻转的卡牌 - 使用CSS动画显示翻转效果
+                    button_label = "🚫" if is_blocked else "🂠"
+                    suit_color = "red" if card['suit'] in ['♥', '♦'] else "black"
+                    st.markdown(f"""
+                    <div style="aspect-ratio: 2/3; max-width: 150px; margin: 0 auto; perspective: 1000px;">
+                        <div class="card-flip flipped" style="position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.5s; transform: rotateY(180deg);">
+                            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 2px solid #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 24px;">{button_label}</div>
+                            <div style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 2px solid #333; background: white; color: {suit_color}; font-size: 24px; transform: rotateY(180deg);">{card['suit']}<br>{card['value']}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 elif is_flipped or is_selected:
                     # 显示卡牌正面
                     color = get_card_color(card['suit'])
                     display_text = f"{card['suit']}\n{card['value']}"
                     button_style = "🔴 " if is_selected else ""
+                    button_class = "card-front-btn" + (" card-selected" if is_selected else "")
                     st.button(
                         f"{button_style}{display_text}",
                         key=f"card_{card_idx}",
@@ -383,7 +577,7 @@ def main():
                     st.button(
                         button_label,
                         key=f"card_{card_idx}",
-                        disabled=is_blocked,
+                        disabled=is_blocked or game_state['waiting_for_action'],
                         on_click=handle_card_click,
                         args=(card_idx, game_state),
                         use_container_width=True
